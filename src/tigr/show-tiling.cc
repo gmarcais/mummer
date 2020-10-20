@@ -64,7 +64,7 @@ struct AlignStats
   long int sQ, eQ, sR, eR;              // start and end in Query and Reference
                                         // relative to the directional strand
 
-  char * IdR;                           // FASTA Id of the mapping reference
+  string IdR;                           // FASTA Id of the mapping reference
   long int SeqLenR;                     // length of the reference
 
   bool isTiled;                          // is the alignment be tiled?
@@ -75,7 +75,7 @@ struct AlignStats
 struct QueryContig
      //-- Query sequence tiling contig data structure
 {
-  char * IdQ;                              // FASTA Id of the query
+  string IdQ;                              // FASTA Id of the query
   long int SeqLenQ;                        // length of the query
   char * SeqQ;                             // query sequence
 
@@ -85,7 +85,7 @@ struct QueryContig
 
   //-- Things to be filled in once the contig is tiled
   char DirQ;                               // orientation of the contig
-  char * IdR;                              // Id of the mapping reference
+  string IdR;                              // Id of the mapping reference
   long int SeqLenR;                        // sequence length of the reference
   long int StartR, EndR;                   // contig -> reference mapping coords
 
@@ -102,12 +102,10 @@ struct IdR_StartR_Sort
 {
   bool operator( ) (const QueryContig & pA, const QueryContig & pB)
   {
-    int cmp = strcmp (pA.IdR, pB.IdR);
-
     //-- sort IdR
-    if ( cmp < 0 )
+    if ( pA.IdR < pB.IdR )
       return true;
-    else if ( cmp > 0 )
+    else if ( pA.IdR > pB.IdR )
       return false;
 
     //-- sort StartR
@@ -131,12 +129,10 @@ struct IdR_StartRTrimmed_Sort
 {
   bool operator( ) (const QueryContig & pA, const QueryContig & pB)
   {
-    int cmp = strcmp (pA.IdR, pB.IdR);
-
     //-- sort IdR
-    if ( cmp < 0 )
+    if ( pA.IdR < pB.IdR )
       return true;
-    else if ( cmp > 0 )
+    else if ( pA.IdR > pB.IdR )
       return false;
 
     //-- sort StartR
@@ -155,7 +151,7 @@ struct IdQ_Sort
   bool operator( ) (const QueryContig & pA, const QueryContig & pB)
   {
     //-- sort IdQ
-    if ( strcmp (pA.IdQ, pB.IdQ) < 0 )
+    if ( pA.IdQ < pB.IdQ )
       return true;
     else
       return false;
@@ -169,12 +165,10 @@ struct IdR_sQ_Sort
 {
   bool operator( ) (const AlignStats & pA, const AlignStats & pB)
   {
-    int cmp = strcmp (pA.IdR, pB.IdR);
-
     //-- sort IdR
-    if ( cmp < 0 )
+    if ( pA.IdR < pB.IdR )
       return true;
-    else if ( cmp > 0 )
+    else if ( pA.IdR > pB.IdR )
       return false;
 
     //-- sort sQ
@@ -196,6 +190,7 @@ bool isPrintAlignments = false;          // set by -a option
 bool isPrintXML = false;                 // set by -x option
 bool isCircularReference = false;        // set by -c option
 bool isRandomRepeats = false;            // set by -R option
+char fillCharacter = 'N';                // set by -f option
 
 long int MIN_CONTIG_LENGTH = DEFAULT_MIN_CONTIG_LENGTH;
 
@@ -304,7 +299,7 @@ int main
     optarg = NULL;
 
     while ( !errflg  &&  ((ch = getopt
-			   (argc, argv, "achg:i:l:p:Rt:u:v:V:x")) != EOF) )
+			   (argc, argv, "achgf:i:l:p:Rt:u:v:V:x")) != EOF) )
       switch (ch)
         {
 	case 'a' :
@@ -319,6 +314,15 @@ int main
           printHelp (argv[0]);
           exit (EXIT_SUCCESS);
           break;
+
+	case 'f' :
+          if (strcmp(optarg,"none") == 0)
+              fillCharacter = 0;
+          else if (strlen(optarg)==1)
+              fillCharacter = optarg[0];
+          else
+              errflg++;
+	  break;
 
 	case 'g' :
 	  MAX_GAP_SIZE = atoi (optarg);
@@ -596,7 +600,7 @@ void linkContigs
 	  if ( Cip->TileLevel != USED_TILE_LEVEL )
 	    continue;
 
-	  if ( strcmp ( Cip->IdR, Cp->IdR ) != 0 )
+	  if ( Cip->IdR != Cp->IdR )
 	    break;
 
 	  //-- If no overlap
@@ -683,7 +687,7 @@ long int longestConsistentSubset
 
   //-- Build the data array
   N = 0;
-  A = (node *) Safe_malloc (sizeof(node) * (end - begin));
+  A = new node [end - begin];
   for ( Ap = begin; Ap < end; Ap ++ )
     {
       assert ( Ap->isTiled == false );
@@ -698,7 +702,7 @@ long int longestConsistentSubset
   for ( i = 0; i < N; i ++ )
     for ( j = 0; j < i; j ++ )
       {
-	assert ( strcmp (A[i].Ap->IdR, A[j].Ap->IdR) == 0 );
+	assert ( A[i].Ap->IdR ==  A[j].Ap->IdR );
 	if ( A[i].Ap->DirQ != A[j].Ap->DirQ )
 	  continue;
 
@@ -750,7 +754,7 @@ long int longestConsistentSubset
 
   Best = A[Best].Score;
 
-  free ( A );
+  delete[] A;
 
   return Best;
 }
@@ -784,14 +788,14 @@ void outputContigs
 	  if ( endCp->TileLevel != USED_TILE_LEVEL )
 	    continue;
 
-	  if ( strcmp (Cp->IdR, endCp->IdR) != 0 )
+	  if ( Cp->IdR != endCp->IdR )
 	    break;
 	  seqs ++;
 	}
 	  
       fprintf(Output,
       "##%s %ld %ld bases, 00000000 checksum.\n",
-	      Cp->IdR, seqs, Cp->SeqLenR);
+	      Cp->IdR.c_str(), seqs, Cp->SeqLenR);
 
       for ( ; Cp < endCp; Cp ++ )
 	{
@@ -801,13 +805,13 @@ void outputContigs
 	  if ( Cp->DirQ == FORWARD_CHAR )
 	    fprintf(Output,
             "#%s(%ld) [%s] %ld bases, 00000000 checksum. {%ld %ld} <%ld %ld>\n",
-		    Cp->IdQ, Cp->StartR + Cp->LoTrim - 1, "", Cp->SeqLenQ,
+		    Cp->IdQ.c_str(), Cp->StartR + Cp->LoTrim - 1, "", Cp->SeqLenQ,
 		    Cp->LoTrim + 1, Cp->SeqLenQ - Cp->HiTrim,
 		    Cp->StartR + Cp->LoTrim, Cp->EndR - Cp->HiTrim);
 	  else
 	    fprintf(Output,
             "#%s(%ld) [%s] %ld bases, 00000000 checksum. {%ld %ld} <%ld %ld>\n",
-		    Cp->IdQ, Cp->StartR + Cp->LoTrim - 1, "RC", Cp->SeqLenQ,
+		    Cp->IdQ.c_str(), Cp->StartR + Cp->LoTrim - 1, "RC", Cp->SeqLenQ,
 		    Cp->SeqLenQ - Cp->LoTrim, Cp->HiTrim + 1,
 		    Cp->StartR + Cp->LoTrim, Cp->EndR - Cp->HiTrim);
 	}
@@ -835,28 +839,25 @@ void outputPseudoMolecule
   long int InitSize = INIT_SIZE;
   char Line [MAX_LINE];
 
-
   //-- Read in the needed query contig sequences
-  A = (char *) Safe_malloc ( sizeof(char) * InitSize );
+  A = new char[InitSize];
   while ( Read_String (QryFile, A, InitSize, Line, false) )
     {
+      // NOTE: if a chromosome occurs multiple times in a tiling, we need to
+      //       store the query sequence each time.
       for ( Cp = Contigs.begin( ); Cp < Contigs.end( ); Cp ++ )
 	if ( Cp->TileLevel == USED_TILE_LEVEL )
-	  if ( strcmp ( Line, Cp->IdQ ) == 0 )
-	    break;
-      
-      if ( Cp < Contigs.end( ) )
-	{
-	  assert ( (long int)strlen(A+1) == Cp->SeqLenQ );
-	  Cp->SeqQ = (char *) Safe_malloc
-	    ( sizeof(char) * (Cp->SeqLenQ + 2) );
-	  Cp->SeqQ[0] = '\0';
-	  strcpy ( Cp->SeqQ + 1, A + 1 );
-	  if ( Cp->DirQ == REVERSE_CHAR )
-	    Reverse_Complement (Cp->SeqQ, 1, Cp->SeqLenQ);
+          if ( string(Line) == Cp->IdQ )
+          {
+            assert ( (long int)strlen(A+1) == Cp->SeqLenQ );
+            Cp->SeqQ = new char [Cp->SeqLenQ + 2];
+            Cp->SeqQ[0] = '\0';
+            strcpy ( Cp->SeqQ + 1, A + 1 );
+            if ( Cp->DirQ == REVERSE_CHAR )
+              Reverse_Complement (Cp->SeqQ, 1, Cp->SeqLenQ);
 	}
     }
-  free ( A );
+  delete[] A;
 
   //-- For all contigs, create pseudo
   for ( beginCp = Contigs.begin( ); beginCp < Contigs.end( ); beginCp ++ )
@@ -867,7 +868,7 @@ void outputPseudoMolecule
       //-- New Reference sequence
       start = 1;
       Cp = beginCp;
-      fprintf (Output, ">pseudo_used_%s\n", Cp->IdR);
+      fprintf (Output, ">pseudo_used_%s\n", Cp->IdR.c_str());
 
       //-- For all contigs mapping to this Reference
       while ( Cp != Contigs.end( ) )
@@ -915,7 +916,7 @@ void outputPseudoMolecule
 		 "\nERROR: Sequence \"%s\" was not found in the query file.\n"
 		 "       Please check the validity of the query file listed\n"
 		 "       at the top of the .delta input file and rerun.\n",
-		       Cp->IdQ);
+		       Cp->IdQ.c_str());
 	      exit (EXIT_FAILURE);
 	    }
 
@@ -929,18 +930,21 @@ void outputPseudoMolecule
 		  fputc ('\n', Output);
 		}
 	    }
-	  free (Cp->SeqQ);
+	  delete[] Cp->SeqQ;
 
 	  //-- Print the gap
-	  for ( i = 1; i <= gap; i ++ )
-	    {
-	      fputc ('N', Output);
-	      if ( ++ ct == CHARS_PER_LINE )
-		{
-		  ct = 0;
-		  fputc ('\n', Output);
-		}
-	    }
+          if (fillCharacter > 0)
+          {
+              for (int i = 1; i <= gap; i ++ )
+              {
+                  fputc (fillCharacter, Output);
+                  if ( ++ ct == CHARS_PER_LINE )
+                  {
+                      ct = 0;
+                      fputc ('\n', Output);
+                  }
+              }
+          }
 
 	  //-- Adjust the next start if this contig was used for overlap
 	  if ( gap < 0  &&  end == Cp->SeqLenQ )
@@ -996,7 +1000,7 @@ void parseDelta
 {
   vector<QueryContig>::iterator Cp;
 
-  char * CurrIdQ;                        // the current contig Id
+  string CurrIdQ;                        // the current contig Id
   long int temp;
 
   QueryContig aContig;                   //  single query contig
@@ -1011,7 +1015,7 @@ void parseDelta
 
 
   Contigs.clear( );
-  CurrIdQ = NULL_STRING;
+
   aContig.SeqQ = NULL;
   aContig.DirQ = '*';
   aContig.IdR = NULL_STRING;
@@ -1052,12 +1056,10 @@ void parseDelta
       aStats.SeqLenR = dr.getRecord( ).lenR;
       aContig.SeqLenQ = dr.getRecord( ).lenQ;
       
-      aStats.IdR = (char *) Safe_malloc (dr.getRecord( ).idR.length( ) + 1);
-      aContig.IdQ = (char *) Safe_malloc (dr.getRecord( ).idQ.length( ) + 1);
-      strcpy (aStats.IdR, dr.getRecord( ).idR.c_str( ));
-      strcpy (aContig.IdQ, dr.getRecord( ).idQ.c_str( ));
+      aStats.IdR = dr.getRecord( ).idR;
+      aContig.IdQ = dr.getRecord( ).idQ;
 
-      if ( strcmp (CurrIdQ, aContig.IdQ) )
+      if ( CurrIdQ != aContig.IdQ )
 	{
 	  CurrIdQ = aContig.IdQ;
 	  aContig.TileLevel = aContig.SeqLenQ < MIN_CONTIG_LENGTH ?
@@ -1199,7 +1201,7 @@ void printAlignment
   fprintf(Output,"%.2f\t", Ap->Idy);
   fprintf(Output,"%ld\t%ld\t", Ap->SeqLenR, Cp->SeqLenQ);
   fprintf(Output,"%.2f\t%.2f\t", covA, covB);
-  fprintf(Output,"%s\t%s", Ap->IdR, Cp->IdQ);
+  fprintf(Output,"%s\t%s", Ap->IdR.c_str(), Cp->IdQ.c_str());
   fprintf(Output,"\n"); 
 
   return;
@@ -1263,7 +1265,7 @@ void printTilingPath
 
       //-- A new Reference sequence
       Cp = beginCp;
-      printf (">%s %ld bases\n", Cp->IdR, Cp->SeqLenR);
+      printf (">%s %ld bases\n", Cp->IdR.c_str(), Cp->SeqLenR);
 
       //-- For all contigs mapping to this reference
       while ( Cp != Contigs.end( ) )
@@ -1288,7 +1290,7 @@ void printTilingPath
 	  //-- Print the data
 	  printf ("%ld\t%ld\t%ld\t%ld\t%.2f\t%.2f\t%c\t%s\n",
 		  Cp->StartR, Cp->EndR, gap, len, pcov,
-		  pidy, Cp->DirQ, Cp->IdQ);
+		  pidy, Cp->DirQ, Cp->IdQ.c_str());
 
 	  //-- Walk the pointer down the list of contigs
 	  if ( Cp->linksTo == Contigs.end( )  ||  Cp->linksTo->isLinkHead )
@@ -1343,7 +1345,7 @@ void printTilingXML
 	{
 	  printf
 	    ("\t<CONTIG ID = \"contig_%s\" NAME = \"%s\" LEN = \"%ld\"/>\n",
-	     Cp->IdQ, Cp->IdQ, Cp->SeqLenQ);
+	     Cp->IdQ.c_str(), Cp->IdQ.c_str(), Cp->SeqLenQ);
 
 	  //-- Walk the pointer down the list of contigs
 	  if ( Cp->linksTo == Contigs.end( )  ||  Cp->linksTo->isLinkHead )
@@ -1380,7 +1382,7 @@ void printTilingXML
 	    ("\t<LINK ID = \"link_%ld\" SIZE = \"%ld\" TYPE = \"MUMmer\">\n",
 	     ++ ct, gap);
 	  printf("\t\t<CONTIG ID = \"contig_%s\" ORI = \"%s\">\n",
-		 Cp->IdQ, Cp->DirQ == FORWARD_CHAR ? "BE" : "EB");
+		 Cp->IdQ.c_str(), Cp->DirQ == FORWARD_CHAR ? "BE" : "EB");
 
 	  for ( Ap = Cp->Aligns.begin( );
 		Ap < Cp->Aligns.end( ); Ap ++ )
@@ -1394,7 +1396,7 @@ void printTilingXML
 
 	  printf("\t\t</CONTIG>\n");
 	  printf("\t\t<CONTIG ID = \"contig_%s\" ORI = \"%s\">\n",
-		 Cp->linksTo->IdQ,
+		 Cp->linksTo->IdQ.c_str(),
 		 Cp->linksTo->DirQ == FORWARD_CHAR ? "BE" : "EB");
 
 	  for ( Ap = Cp->linksTo->Aligns.begin( );
@@ -1440,6 +1442,9 @@ void printHelp
     "-c            Assume the reference sequences are circular, and allow\n"
     "              tiled contigs to span the origin\n"
     "-h            Display help information\n"
+    "-f char       Set default fill character for missing regions in\n"
+    "              pseudomolecules.  If given '-f none' then missing\n"
+    "              are left empty. (default = N)\n"
     "-g int        Set maximum gap between clustered alignments [-1, INT_MAX]\n"
     "              A value of -1 will represent infinity\n"
     "              (nucmer default = %ld)\n"
@@ -1525,8 +1530,8 @@ void tileContigs
 
   long int start, end, hang;
 
-  char * IdR = NULL;
-  char * IdRhang = NULL;
+  string IdR;
+  string IdRhang;
 
   float cov, covhang;
   float max_cov, maxx_cov;
@@ -1546,7 +1551,7 @@ void tileContigs
 	{
 	  //-- For a single reference
 	  for ( Aip = Ap + 1; Aip < Cp->Aligns.end( ); Aip ++ )
-	    if ( strcmp (Ap->IdR, Aip->IdR) != 0 )
+	    if ( Ap->IdR != Aip->IdR )
 	      break;
 
 	  //-- Cluster the alignments
@@ -1655,7 +1660,7 @@ void tileContigs
 	   max_cov >= MIN_COVERAGE  &&  idy >= MIN_PIDY )
 	{	  
 	  for ( Aip = Cp->Aligns.begin( ); Aip < Cp->Aligns.end( ); Aip ++ )
-	    if ( Aip->isTiled  &&  strcmp (Aip->IdR, IdR) != 0 )
+	    if ( Aip->isTiled  &&  Aip->IdR != IdR )
 	      Aip->isTiled = false;
 
 	  //-- Tile the contig
@@ -1667,7 +1672,7 @@ void tileContigs
 		max_covhang >= MIN_COVERAGE  &&  idyhang >= MIN_PIDY )
 	{
 	  for ( Aip = Cp->Aligns.begin( ); Aip < Cp->Aligns.end( ); Aip ++ )
-	    if ( Aip->isTiled  &&  strcmp (Aip->IdR, IdRhang) != 0 )
+	    if ( Aip->isTiled  &&  Aip->IdR != IdRhang )
 	      Aip->isTiled = false;
 
 	  //-- Tile the contig
